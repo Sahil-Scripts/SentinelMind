@@ -1,0 +1,3 @@
+# Simple IOC list (IPs/domains/hashes)
+185.12.22.9
+malicious.example.com

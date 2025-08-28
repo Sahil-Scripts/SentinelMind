@@ -1,0 +1,4 @@
+{"technique_id":"T1110","tactic":"Credential Access","description":"Adversaries may use brute force to gain access to accounts by attempting multiple passwords."}
+{"technique_id":"T1078","tactic":"Credential Access","description":"Valid Accounts: adversaries may use stolen credentials to bypass authentication mechanisms."}
+{"technique_id":"T1041","tactic":"Exfiltration","description":"Exfiltration Over C2 Channel: data is exfiltrated over an existing command and control channel."}
+{"technique_id":"T1021","tactic":"Lateral Movement","description":"Remote Services: adversaries may use valid accounts to move laterally using remote services such as SSH, RDP."}

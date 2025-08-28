@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SentinelVision — Attack Chain Playback</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#111833; --ink:#dfe6ff; --muted:#9aa6ce; --accent:#7aa2ff;
+      --cred:#ff4d4d; --lat:#ff8c00; --exf:#4da3ff; --other:#9aa6ce;
+      --edge:#44507a; --node:#1a2756; --nodeStroke:#7aa2ff;
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    header{padding:16px 20px;display:flex;align-items:center;gap:14px;background:#0d1430;border-bottom:1px solid #1a2450;position:sticky;top:0;z-index:5}
+    h1{font-size:18px;margin:0;color:#e6ecff}
+    .btn{background:var(--panel);color:var(--ink);border:1px solid #253064;padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn:hover{border-color:var(--accent)}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .status{margin-left:auto;font-size:12px;color:var(--muted)}
+    #canvasWrap{height:calc(100% - 64px);display:grid;grid-template-columns:1fr 320px}
+    #stage{min-height:560px;position:relative;overflow:hidden;background:radial-gradient(1200px 700px at 60% -200px,#1b2658 0%,#0b1020 60%)}
+    #legend{background:var(--panel);border-left:1px solid #1a2450;padding:14px;overflow:auto}
+    .pill{display:inline-block;padding:3px 8px;margin:4px 8px 4px 0;border-radius:999px;font-size:12px}
+    .cred{background:#3b0f0f;border:1px solid var(--cred)} .lat{background:#3a2200;border:1px solid var(--lat)} .exf{background:#0e223a;border:1px solid var(--exf)} .other{background:#1b223a;border:1px solid var(--other)}
+    #log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.45;color:#c9d3ff;background:#0d1330;border:1px solid #1a2450;border-radius:8px;padding:8px;height:180px;overflow:auto}
+    .node{position:absolute;background:var(--node);border:1px solid var(--nodeStroke);color:#e9efff;padding:6px 10px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.45);white-space:nowrap}
+    .node .id{font-weight:600}.node .label{font-size:11px;color:var(--muted)}
+    svg{position:absolute;inset:0;pointer-events:none}
+    .edge{stroke:var(--edge);stroke-width:2;opacity:.6}
+    .edge-live{stroke-width:3.5;opacity:1;filter:drop-shadow(0 0 6px rgba(122,162,255,.6))}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SentinelVision</h1>
+    <div class="row">
+      <button class="btn" id="btnApi">Load Graph (API)</button>
+      <button class="btn" id="btnLatest">Load Latest</button>
+      <button class="btn" id="btnLocal">Load Local graph.json</button>
+      <button class="btn" id="btnPlay">Play</button>
+      <button class="btn" id="btnReset">Reset</button>
+    </div>
+    <div class="status" id="status">idle</div>
+  </header>
+
+  <div id="canvasWrap">
+    <div id="stage">
+      <svg id="edges"></svg>
+    </div>
+    <aside id="legend">
+      <h3 style="margin:6px 0 8px 0;">Legend</h3>
+      <div><span class="pill cred"></span> Credential Access</div>
+      <div><span class="pill lat"></span> Lateral Movement</div>
+      <div><span class="pill exf"></span> Exfiltration</div>
+      <div><span class="pill other"></span> Other / Unknown</div>
+      <h3 style="margin:14px 0 8px 0;">Steps</h3>
+      <ol id="steps" style="padding-left:18px;"></ol>
+      <h3 style="margin:14px 0 8px 6px;">Log</h3>
+      <div id="log"></div>
+    </aside>
+  </div>
+
+  <script>
+    const API = 'http://127.0.0.1:8000'; // backend base
+    const colorFor = (t) => {
+      if(!t) return '#9aa6ce';
+      t=(''+t).toLowerCase();
+      if(t.includes('credential')) return '#ff4d4d';
+      if(t.includes('lateral'))    return '#ff8c00';
+      if(t.includes('exfil'))      return '#4da3ff';
+      return '#9aa6ce';
+    };
+
+    let GRAPH = {nodes:[], edges:[]}, arranged=false, playing=false;
+    const stage=document.getElementById('stage'), svg=document.getElementById('edges');
+    const statusEl=document.getElementById('status'), stepsEl=document.getElementById('steps'), logEl=document.getElementById('log');
+
+    function setStatus(s){ statusEl.textContent=s; console.log('[status]',s); }
+    function log(m){ const t=new Date().toLocaleTimeString(); logEl.textContent += `[${t}] ${m}\n`; logEl.scrollTop=logEl.scrollHeight; console.log(m); }
+
+    // ---- Loaders ----
+    async function loadFromAPI(){
+      setStatus('loading from API ...');
+      try{
+        const res = await fetch(`${API}/graph?t=${Date.now()}`, {cache:'no-store'});
+        if(!res.ok){ setStatus('fetch failed '+res.status); return; }
+        const data = await res.json();
+        applyGraph(data);
+        setStatus('loaded from /graph');
+      }catch(e){ setStatus('error'); log(e.message); }
+    }
+
+    async function loadLatest(){
+      setStatus('loading latest graph ...');
+      try{
+        const res = await fetch(`${API}/graph/latest?t=${Date.now()}`, {cache:'no-store'});
+        if(!res.ok){ setStatus('no latest graph (run /ingest first)'); return; }
+        const data = await res.json();
+        applyGraph(data);
+        setStatus('loaded latest');
+      }catch(e){ setStatus('error'); log(e.message); }
+    }
+
+    async function loadLocal() {
+      // Try a few common dev paths
+      const candidates = [
+        'graph.json',
+        'frontend/sentinelvision/graph.json',
+        '../graph.json',
+        '../../graph.json',
+        'SentinelMind_starter/frontend/sentinelvision/graph.json'
+      ];
+      for(const url of candidates){
+        try{
+          const res = await fetch(url+'?t='+Date.now(), {cache:'no-store'});
+          if(res.ok){
+            const data = await res.json();
+            applyGraph(data);
+            setStatus(`loaded ${url}`);
+            return;
+          }
+        }catch(_){}
+      }
+      setStatus('could not find graph.json in known paths');
+    }
+
+    // ---- Graph render pipeline ----
+    function applyGraph(data){
+      if(!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)){
+        setStatus('empty/invalid graph'); return;
+      }
+      GRAPH = data;
+      setStatus(`graph: ${GRAPH.nodes.length} nodes, ${GRAPH.edges.length} edges`);
+      stepsEl.innerHTML='';
+      [...GRAPH.edges].sort((a,b)=>(a.stepNum||0)-(b.stepNum||0)).forEach(e=>{
+        const li=document.createElement('li');
+        li.innerHTML = `<b>#${e.stepNum||'?'}</b> <span style="color:${colorFor(e.tactic)}">${e.tactic||'Unknown'}</span> ${e.technique? '('+e.technique+')':''} — <code>${e.source}</code> → <code>${e.target}</code>`;
+        stepsEl.appendChild(li);
+      });
+      arranged=false;
+      draw();
+    }
+
+    function clearStage(){
+      Array.from(stage.querySelectorAll('.node')).forEach(n=>n.remove());
+      while(svg.firstChild) svg.removeChild(svg.firstChild);
+    }
+
+    function layoutNodes(W,H){
+      const n=GRAPH.nodes.length, R=Math.max(160, Math.min(W,H)/2 - 80);
+      GRAPH.nodes.forEach((node,i)=>{
+        const a=(i/n)*Math.PI*2;
+        node._x=W/2 + R*Math.cos(a);
+        node._y=H/2 + R*Math.sin(a);
+      });
+      arranged=true;
+    }
+
+    function draw(){
+      clearStage();
+      const rect=stage.getBoundingClientRect(); const W=rect.width, H=rect.height;
+      if(!arranged) layoutNodes(W,H);
+
+      // nodes
+      GRAPH.nodes.forEach(n=>{
+        const el=document.createElement('div'); el.className='node';
+        el.style.left=(n._x-60)+'px'; el.style.top=(n._y-18)+'px';
+        el.innerHTML=`<div class="id">${n.id}</div><div class="label">${n.label||''}</div>`;
+        stage.appendChild(el);
+      });
+
+      // base edges
+      svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+      GRAPH.edges.forEach(e=>{
+        const s=GRAPH.nodes.find(n=>n.id===e.source), t=GRAPH.nodes.find(n=>n.id===e.target);
+        if(!s||!t) return;
+        const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1',s._x); line.setAttribute('y1',s._y);
+        line.setAttribute('x2',t._x); line.setAttribute('y2',t._y);
+        line.setAttribute('class','edge'); svg.appendChild(line);
+      });
+    }
+
+    // ---- Playback ----
+    function resetPlayback(){ playing=false; draw(); setStatus('ready'); }
+
+    async function play(){
+      if(!GRAPH.edges.length){ setStatus('no edges'); return; }
+      resetPlayback(); playing=true;
+      const sorted=[...GRAPH.edges].sort((a,b)=>(a.stepNum||0)-(b.stepNum||0));
+      for(const e of sorted){
+        if(!playing) break;
+        const s=GRAPH.nodes.find(n=>n.id===e.source), t=GRAPH.nodes.find(n=>n.id===e.target); if(!s||!t) continue;
+        const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1',s._x); line.setAttribute('y1',s._y);
+        line.setAttribute('x2',t._x); line.setAttribute('y2',t._y);
+        line.setAttribute('class','edge edge-live');
+        line.style.stroke=colorFor(e.tactic);
+        svg.appendChild(line);
+        log(`#${e.stepNum||'?'} ${e.source} → ${e.target} | ${e.tactic||'Unknown'} ${e.technique? '('+e.technique+')':''}`);
+        await new Promise(r=>setTimeout(r,800));
+      }
+      setStatus('done'); playing=false;
+    }
+
+    // ---- Wire UI ----
+    document.getElementById('btnApi').onclick    = loadFromAPI;
+    document.getElementById('btnLatest').onclick = loadLatest;
+    document.getElementById('btnLocal').onclick  = loadLocal;
+    document.getElementById('btnPlay').onclick   = play;
+    document.getElementById('btnReset').onclick  = resetPlayback;
+    window.addEventListener('resize', ()=>{ arranged=false; if(GRAPH.nodes.length) draw(); });
+
+    // initial draw
+    draw();
+  </script>
+</body>
+</html>

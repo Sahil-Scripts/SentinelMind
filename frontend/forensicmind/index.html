@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>ForensicMind Report Viewer</title>
+</head>
+<body>
+  <h1>ForensicMind – Report</h1>
+  <textarea id="logs" rows="8" cols="100" placeholder="Paste logs here..."></textarea><br/>
+  <button id="run">Generate Report</button>
+  <div id="out"></div>
+<script>
+async function run() {
+  const logs = document.getElementById('logs').value;
+  const e1 = await fetch('http://127.0.0.1:8000/parse', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({logs})}).then(r=>r.json());
+  const e2 = await fetch('http://127.0.0.1:8000/enrich', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(e1)}).then(r=>r.json());
+  const e3 = await fetch('http://127.0.0.1:8000/mitre-map', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(e2)}).then(r=>r.json());
+  const t  = await fetch('http://127.0.0.1:8000/timeline', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(e3)}).then(r=>r.json());
+  const rep= await fetch('http://127.0.0.1:8000/report', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(t)}).then(r=>r.json());
+  document.getElementById('out').innerHTML = rep.html;
+  // Optional: push to Neptune
+  await fetch('http://127.0.0.1:8000/graph-write', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(t)});
+}
+document.getElementById('run').onclick = run;
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+2025-08-27T10:15:21Z serverA sshd[1021]: Failed password for admin from 185.12.22.9 port 52211 ssh2
+2025-08-27T10:15:33Z serverA sshd[1021]: Failed password for admin from 185.12.22.9 port 52244 ssh2
+2025-08-27T10:15:55Z serverA sshd[1021]: Accepted password for admin from 185.12.22.9 port 52301 ssh2
+2025-08-27T10:16:14Z serverA sudo: admin : TTY=pts/0 ; PWD=/home/admin ; COMMAND=/usr/bin/scp db.dump 185.12.22.9:/tmp/

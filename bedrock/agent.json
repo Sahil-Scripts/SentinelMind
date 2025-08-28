@@ -1,0 +1,41 @@
+{
+  "name": "SentinelMindAgent",
+  "instructions": "Given raw logs, orchestrate tools to produce ForensicMind HTML and SentinelVision Graph JSON.",
+  "action_groups": [
+    {
+      "name": "parse",
+      "http_method": "POST",
+      "endpoint": "http://127.0.0.1:8000/parse"
+    },
+    {
+      "name": "enrich",
+      "http_method": "POST",
+      "endpoint": "http://127.0.0.1:8000/enrich"
+    },
+    {
+      "name": "mitre-map",
+      "http_method": "POST",
+      "endpoint": "http://127.0.0.1:8000/mitre-map"
+    },
+    {
+      "name": "timeline",
+      "http_method": "POST",
+      "endpoint": "http://127.0.0.1:8000/timeline"
+    },
+    {
+      "name": "report",
+      "http_method": "POST",
+      "endpoint": "http://127.0.0.1:8000/report"
+    },
+    {
+      "name": "graph-write",
+      "http_method": "POST",
+      "endpoint": "http://127.0.0.1:8000/graph-write"
+    },
+    {
+      "name": "graph-read",
+      "http_method": "GET",
+      "endpoint": "http://127.0.0.1:8000/graph"
+    }
+  ]
+}

