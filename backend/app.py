@@ -1,18 +1,28 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 
 app = FastAPI(title="SentinelMind API")
 
+# -----------------------------
+# CORS
+# -----------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"]
 )
 
+# -----------------------------
+# Health check
+# -----------------------------
 @app.get("/health")
 def health():
     return {"ok": True}
 
+# -----------------------------
+# Demo graph endpoint
+# -----------------------------
 @app.get("/graph")
 def graph():
     return {
@@ -47,8 +57,9 @@ def graph():
         ]
     }
 
-
-# Routers (each wrapped to avoid whole-app crashes if a file is missing)
+# -----------------------------
+# Optional routers (wrapped)
+# -----------------------------
 try:
     from ingest_router import router as ingest_router
     app.include_router(ingest_router)
@@ -76,3 +87,25 @@ try:
     print("[app] neptune_router loaded")
 except Exception as e:
     print("[app] WARN: neptune_router not loaded ->", e)
+
+# -------------------------------------------------
+# Startup banner that prints your frontend links
+# (works when starting with: uvicorn app:app --port 8000)
+# -------------------------------------------------
+FRONTEND_LINKS = [
+    "http://127.0.0.1:5500/SentinelMind_starter/frontend/sentinelvision/index.html",
+    "http://127.0.0.1:5500/SentinelMind_starter/frontend/forensicmind/index.html",  # change if needed
+]
+
+_logger = logging.getLogger("uvicorn.error")
+
+@app.on_event("startup")
+async def _print_frontend_links():
+    lines = [
+        "",
+        "🔗 Frontend UIs (Ctrl+Click to open):"
+    ]
+    for i, url in enumerate(FRONTEND_LINKS, 1):
+        lines.append(f"  {i}. {url}")
+    lines.append("")
+    _logger.info("\n".join(lines))
