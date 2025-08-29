@@ -1,0 +1,4 @@
+﻿{"source":"web01","target":"db01","tactic":"Credential Access","technique":"T1110","stepNum":1,"note":"Burst of failed logins on /login from same IP 203.0.113.24","source_label":"Nginx","target_label":"Postgres"}
+{"source":"web01","target":"db01","tactic":"Credential Access","technique":"T1552","stepNum":2,"note":"App read .env; DB creds found in env var","source_label":"App","target_label":"Postgres"}
+{"source":"db01","target":"backup01","tactic":"Exfiltration","technique":"T1048","stepNum":3,"note":"Large DB export over TCP 443 to backup host outside change window","source_label":"Postgres","target_label":"Backup"}
+{"source":"web01","target":"filesrv","tactic":"Discovery","technique":"T1087","stepNum":4,"note":"App enumerated /share/users via SMB list","source_label":"Nginx","target_label":"File Server"}

@@ -1,0 +1,4 @@
+﻿{"source":"win-adminpc","target":"ad-dc01","tactic":"Credential Access","technique":"T1003","stepNum":1,"note":"LSASS memory read detected (Event 10 + 4688: procdump.exe -ma lsass.exe)","source_label":"Windows Admin PC","target_label":"Domain Controller"}
+{"source":"ad-dc01","target":"filesrv","tactic":"Lateral Movement","technique":"T1021","stepNum":2,"note":"SMB session using domain admin token (Event 4624 Type 3)","source_label":"Domain Controller","target_label":"File Server"}
+{"source":"filesrv","target":"db01","tactic":"Persistence","technique":"T1098","stepNum":3,"note":"Service account added to DB admin group (Windows Event 4732)","source_label":"File Server","target_label":"Database"}
+{"source":"win-adminpc","target":"mail01","tactic":"Exfiltration","technique":"T1041","stepNum":4,"note":"PST export started by suspicious process (Event 4688)","source_label":"Windows Admin PC","target_label":"Mail Server"}

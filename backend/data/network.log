@@ -1,0 +1,4 @@
+﻿{"source":"devpc01","target":"dmz-gw","tactic":"Credential Access","technique":"T1110","stepNum":1,"note":"Repeated SSH auth failures to DMZ gateway from 10.1.5.77","source_label":"Dev PC","target_label":"DMZ Gateway"}
+{"source":"dmz-gw","target":"web01","tactic":"Lateral Movement","technique":"T1021","stepNum":2,"note":"Pivoted SSH into web01 after successful key auth","source_label":"DMZ Gateway","target_label":"Web Server"}
+{"source":"web01","target":"ext-198.51.100.50","tactic":"Exfiltration","technique":"T1048","stepNum":3,"note":"Sustained 1.2GB outbound over 443 to unknown external IP","source_label":"Web Server","target_label":"External IP"}
+{"source":"web01","target":"siem","tactic":"Defense Evasion","technique":"T1070","stepNum":4,"note":"Log tampering suspected: gaps detected in access.log","source_label":"Web Server","target_label":"SIEM"}
