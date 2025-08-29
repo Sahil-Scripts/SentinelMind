@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import re
 import os
+from collections import Counter
 
 # ================================
 # IBM watsonx.ai / Granite (version-safe)
@@ -37,8 +38,10 @@ WATSONX_BASE_URL   = os.getenv("WATSONX_BASE_URL", "https://eu-gb.ml.cloud.ibm.c
 # Common Granite chat model (override if your account uses a different ID)
 WATSONX_MODEL_ID   = os.getenv("WATSONX_MODEL_ID", "ibm/granite-13b-chat-v2")
 
+
 def _wx_is_configured() -> bool:
     return WX_AVAILABLE and bool(WATSONX_API_KEY and WATSONX_PROJECT_ID)
+
 
 def _wx_generate(prompt: str, model_id: Optional[str] = None) -> str:
     """Generate text with Granite across SDK variants; returns text or an error marker."""
@@ -51,16 +54,18 @@ def _wx_generate(prompt: str, model_id: Optional[str] = None) -> str:
         creds = Credentials(api_key=WATSONX_API_KEY, url=WATSONX_BASE_URL)
         mdl_id = model_id or WATSONX_MODEL_ID
 
+        params = {
+            "decoding_method": "greedy",
+            "max_new_tokens": 600,
+            "temperature": 0.2,
+        }
+
         if WX_MODE == "model":
             model = Model(
                 model_id=mdl_id,
                 credentials=creds,
                 project_id=WATSONX_PROJECT_ID,
-                params={
-                    "decoding_method": "greedy",
-                    "max_new_tokens": 600,
-                    "temperature": 0.2,
-                },
+                params=params,
             )
             out = model.generate_text(prompt=prompt) if hasattr(model, "generate_text") else model.generate(prompt=prompt)
             if isinstance(out, dict):
@@ -75,11 +80,7 @@ def _wx_generate(prompt: str, model_id: Optional[str] = None) -> str:
                 model_id=mdl_id,
                 credentials=creds,
                 project_id=WATSONX_PROJECT_ID,
-                params={
-                    "decoding_method": "greedy",
-                    "max_new_tokens": 600,
-                    "temperature": 0.2,
-                },
+                params=params,
             )
             out = mi.generate_text(prompt=prompt)
             if isinstance(out, dict):
@@ -95,12 +96,38 @@ def _wx_generate(prompt: str, model_id: Optional[str] = None) -> str:
     except Exception as e:
         return f"(Granite generation failed: {e})"
 
+
+# ================================
+# Prompt builders (now includes MITRE-focused easy summary)
+# ================================
+
+def _compute_mitre_stats(mitre: List[Dict[str, Any]]) -> Dict[str, Any]:
+    tech_ids: List[str] = []
+    tactics: List[str] = []
+    for m in mitre:
+        for t in (m.get("techniques") or []):
+            tid = t.get("id") or ""
+            tac = t.get("technique") or t.get("tactic") or ""
+            if tid:
+                tech_ids.append(tid)
+            if tac:
+                tactics.append(tac)
+    tech_counts = Counter(tech_ids)
+    tactic_counts = Counter(tactics)
+    return {
+        "technique_counts": dict(tech_counts.most_common(20)),
+        "tactic_counts": dict(tactic_counts.most_common(20)),
+        "total_events_mapped": len(mitre),
+        "unique_techniques": sorted(set(tech_ids)),
+    }
+
+
 def _build_prompts_for_report(
     timeline: List[Dict[str, Any]],
     iocs: List[Dict[str, Any]],
     mitre: List[Dict[str, Any]],
 ) -> Dict[str, str]:
-    """Create concise prompts for 'easy' and 'soc' summaries."""
+    """Create prompts for 'easy', 'soc', and 'easy_mitre' (MITRE-first)."""
     tl_lines: List[str] = []
     for t in timeline[:300]:
         ts = t.get("timestamp", "")
@@ -115,6 +142,8 @@ def _build_prompts_for_report(
         ids = ", ".join([x.get("id", "") for x in (m.get("techniques") or []) if x.get("id")])
         if ids:
             mitre_lines.append(f"evt#{m.get('event_idx','')}: {ids}")
+
+    stats = _compute_mitre_stats(mitre)
 
     timeline_blob = "\n".join(tl_lines)
     iocs_blob     = "\n".join(ioc_lines)
@@ -160,7 +189,33 @@ MITRE per-event:
 Return markdown with headings.
 """.strip()
 
-    return {"easy": easy_prompt, "soc": soc_prompt}
+    easy_mitre = f"""
+You are a security explainer. Create a very short, plain-English **Granite Easy Summary focused on MITRE ATT&CK** so a new analyst can grasp what happened.
+Output sections (use bullets where helpful, no tables):
+1) **What we saw (non-technical)** – 2-3 sentences.
+2) **Most common techniques (MITRE IDs)** – List top techniques with a one-line meaning each. Use the counts below.
+3) **Likely attack flow (event refs)** – A single bullet chain like [#A→#B→#C], oldest to newest.
+4) **What to do now** – 4-6 concrete, prioritized steps.
+
+Counts and context:
+Technique counts: {json.dumps(stats.get('technique_counts', {}))}
+Tactic counts: {json.dumps(stats.get('tactic_counts', {}))}
+Unique techniques: {json.dumps(stats.get('unique_techniques', []))}
+Total events mapped: {stats.get('total_events_mapped', 0)}
+
+TIMELINE (idx, time, summary):
+{timeline_blob}
+
+IOCS (type=value evt#):
+{iocs_blob}
+
+MITRE (evt#: IDs):
+{mitre_blob}
+
+Keep it under 220 words. Avoid jargon. Don’t output JSON.
+""".strip()
+
+    return {"easy": easy_prompt, "soc": soc_prompt, "easy_mitre": easy_mitre}
 
 
 # ================================
@@ -190,6 +245,7 @@ LOG_FILE_MAP = {
 # ================================
 # Helpers: read & build graph
 # ================================
+
 def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
     """Read JSON Lines file safely (skips blank/comment/malformed lines)."""
     events: List[Dict[str, Any]] = []
@@ -207,6 +263,7 @@ def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
             except json.JSONDecodeError:
                 continue
     return events
+
 
 def _build_graph_from_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -240,6 +297,7 @@ def _build_graph_from_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         step += 1
 
     return {"nodes": list(nodes.values()), "edges": edges}
+
 
 def _fallback_sample_graph() -> Dict[str, Any]:
     # Renders even if logs are empty/missing
@@ -282,11 +340,13 @@ MAX_SUMMARY_LEN = 240          # characters kept in timeline/exec views
 MAX_DETAILS_LEN = 12000        # hard cap to avoid megabyte pastes
 ELLIPSIS = " … [truncated]"
 
+
 def single_line(s: str) -> str:
     """Collapse whitespace/newlines into a single line."""
     if not s:
         return ""
     return re.sub(r"\s+", " ", s.strip())
+
 
 def shorten(s: str, n: int = MAX_SUMMARY_LEN) -> Tuple[str, bool]:
     """Return (short_text, was_truncated)."""
@@ -296,11 +356,14 @@ def shorten(s: str, n: int = MAX_SUMMARY_LEN) -> Tuple[str, bool]:
         return s[:n].rstrip() + ELLIPSIS, True
     return s, False
 
+
 class FMLogsIn(BaseModel):
     logs: str
 
+
 class FMEventsIn(BaseModel):
     events: List[Dict[str, Any]]
+
 
 def fm_parse_lines(logs: str) -> List[Dict[str, Any]]:
     """Split pasted text logs into event dicts. Extracts an ISO-ish timestamp if present."""
@@ -321,6 +384,7 @@ def fm_parse_lines(logs: str) -> List[Dict[str, Any]]:
         })
     return events
 
+
 def fm_enrich(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Very light IOC extraction (IP, domain)."""
     iocs: List[Dict[str, Any]] = []
@@ -331,6 +395,7 @@ def fm_enrich(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         for dom in re.findall(r'\b[a-z0-9.-]+\.(?:com|net|org|io|in)\b', raw, flags=re.I):
             iocs.append({"type": "domain", "value": dom, "event_idx": e["idx"]})
     return {"events": events, "iocs": iocs}
+
 
 def fm_mitre_map(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Toy mapping based on keywords. Replace with your classifier as you build it."""
@@ -347,6 +412,7 @@ def fm_mitre_map(payload: Dict[str, Any]) -> Dict[str, Any]:
         if techs:
             mitre.append({"event_idx": e.get("idx"), "techniques": techs})
     return {"events": payload.get("events", []), "iocs": payload.get("iocs", []), "mitre": mitre}
+
 
 def fm_make_timeline(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Build a clean, human-sized timeline."""
@@ -375,9 +441,11 @@ def fm_make_timeline(payload: Dict[str, Any]) -> Dict[str, Any]:
         "summary": f"{len(evs_sorted)} events, {len(payload.get('iocs', []))} IOCs, {len(payload.get('mitre', []))} MITRE mappings"
     }
 
+
 def _html_escape(s: Any) -> str:
     s = "" if s is None else str(s)
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 
 def fm_report_html(timeline: List[Dict[str, Any]], iocs: List[Dict[str, Any]], mitre: List[Dict[str, Any]]) -> str:
     """Server-rendered technical report with expanders for long lines."""
@@ -441,10 +509,12 @@ def fm_report_html(timeline: List[Dict[str, Any]], iocs: List[Dict[str, Any]], m
     """
     return html
 
+
 # ================================
 # API routes: ForensicMind pipeline
 # ================================
 _uvlog = logging.getLogger("uvicorn.error")
+
 
 @app.post("/parse")
 def fm_parse_endpoint(inp: FMLogsIn):
@@ -453,9 +523,11 @@ def fm_parse_endpoint(inp: FMLogsIn):
     events = fm_parse_lines(inp.logs)
     return {"events": events}
 
+
 @app.post("/enrich")
 def fm_enrich_endpoint(e1: FMEventsIn):
     return fm_enrich(e1.events)
+
 
 @app.post("/mitre-map")
 def fm_mitre_endpoint(payload: Dict[str, Any]):
@@ -463,11 +535,13 @@ def fm_mitre_endpoint(payload: Dict[str, Any]):
         raise HTTPException(status_code=400, detail="Missing 'events'.")
     return fm_mitre_map(payload)
 
+
 @app.post("/timeline")
 def fm_timeline_endpoint(payload: Dict[str, Any]):
     if "events" not in payload:
         raise HTTPException(status_code=400, detail="Missing 'events'.")
     return fm_make_timeline(payload)
+
 
 @app.post("/report")
 def fm_report_endpoint(payload: Dict[str, Any]):
@@ -478,7 +552,8 @@ def fm_report_endpoint(payload: Dict[str, Any]):
         "ai": {
           "enabled": bool,
           "easy": "LLM text or reason it was disabled",
-          "soc":  "LLM text or reason it was disabled"
+          "soc":  "LLM text or reason it was disabled",
+          "easy_mitre": "LLM text focused on MITRE"
         }
       }
     """
@@ -488,19 +563,22 @@ def fm_report_endpoint(payload: Dict[str, Any]):
 
     html = fm_report_html(timeline, iocs, mitre)
 
-    ai = {"enabled": False, "easy": "", "soc": ""}
+    ai = {"enabled": False, "easy": "", "soc": "", "easy_mitre": ""}
     if _wx_is_configured():
         prompts = _build_prompts_for_report(timeline, iocs, mitre)
         ai["enabled"] = True
         ai["easy"] = _wx_generate(prompts["easy"])
         ai["soc"]  = _wx_generate(prompts["soc"])
+        ai["easy_mitre"] = _wx_generate(prompts["easy_mitre"])  # NEW: Granite Easy Summary focused on MITRE
 
     return {"html": html, "ai": ai}
+
 
 @app.post("/graph-write")
 def fm_graph_write_endpoint(payload: Dict[str, Any]):
     # pretend to write to a graph DB; acknowledge
     return {"ok": True, "written_nodes": len(payload.get("events", []))}
+
 
 # ================================
 # API routes: existing graph endpoints
@@ -509,9 +587,11 @@ def fm_graph_write_endpoint(payload: Dict[str, Any]):
 def health():
     return {"ok": True}
 
+
 @app.get("/log-types")
 def log_types():
     return list(LOG_TYPES)
+
 
 @app.get("/graph")
 def graph(type: str = Query("application", description="application|system|network")):
@@ -528,6 +608,7 @@ def graph(type: str = Query("application", description="application|system|netwo
 
     _uvlog.info(f"/graph type={t} file={path} events={len(events)} fallback={using_fallback}")
     return g
+
 
 # ================================
 # Optional routers (wrapped)
@@ -560,6 +641,7 @@ try:
 except Exception as e:
     print("[app] WARN: neptune_router not loaded ->", e)
 
+
 # ================================
 # Startup banner + data dir check
 # ================================
@@ -572,6 +654,7 @@ FRONTEND_LINKS = [
     "http://127.0.0.1:5500/SentinelMind_starter/frontend/sentinelvision/index.html",
     "http://127.0.0.1:5500/SentinelMind_starter/frontend/forensicmind/index.html",
 ]
+
 
 @app.on_event("startup")
 async def _startup_banner_and_check():
@@ -588,7 +671,7 @@ async def _startup_banner_and_check():
         lines.append(f"  {i}. {url}")
     lines.append("")
     if not _wx_is_configured():
-        lines.append("ℹ Granite summaries: DISABLED (set WATSONX_* env vars and install/updo ibm-watsonx-ai)")
+        lines.append("ℹ Granite summaries: DISABLED (set WATSONX_* env vars and install/update ibm-watsonx-ai)")
         if WX_IMPORT_ERR:
             lines.append(f"   - SDK import error: {WX_IMPORT_ERR}")
     else:
