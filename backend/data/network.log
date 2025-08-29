@@ -2,3 +2,9 @@
 {"source":"dmz-gw","target":"web01","tactic":"Lateral Movement","technique":"T1021","stepNum":2,"note":"Pivoted SSH into web01 after successful key auth","source_label":"DMZ Gateway","target_label":"Web Server"}
 {"source":"web01","target":"ext-198.51.100.50","tactic":"Exfiltration","technique":"T1048","stepNum":3,"note":"Sustained 1.2GB outbound over 443 to unknown external IP","source_label":"Web Server","target_label":"External IP"}
 {"source":"web01","target":"siem","tactic":"Defense Evasion","technique":"T1070","stepNum":4,"note":"Log tampering suspected: gaps detected in access.log","source_label":"Web Server","target_label":"SIEM"}
+{"source":"web01","target":"db01","tactic":"Credential Access","technique":"T1552","stepNum":5,"note":"Harvested DB creds from /var/www/.env file","source_label":"Web Server","target_label":"Database Server"}
+{"source":"db01","target":"backup01","tactic":"Exfiltration","technique":"T1041","stepNum":6,"note":"Unscheduled dump of hr.db.gz exfiltrated to backup server","source_label":"Database Server","target_label":"Backup Server"}
+{"source":"web01","target":"fs01","tactic":"Discovery","technique":"T1083","stepNum":7,"note":"Enumerated file shares on fs01 via SMB ls","source_label":"Web Server","target_label":"File Server"}
+{"source":"fs01","target":"ad01","tactic":"Lateral Movement","technique":"T1075","stepNum":8,"note":"Pass-the-Hash attempt against Active Directory domain controller","source_label":"File Server","target_label":"Domain Controller"}
+{"source":"ad01","target":"app01","tactic":"Execution","technique":"T1059","stepNum":9,"note":"Remote PowerShell command executed on application server","source_label":"Domain Controller","target_label":"Application Server"}
+{"source":"app01","target":"ext-203.0.113.200","tactic":"Exfiltration","technique":"T1048","stepNum":10,"note":"Outbound transfer of payroll.zip to suspicious IP","source_label":"Application Server","target_label":"External IP"}

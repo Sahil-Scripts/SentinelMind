@@ -2,3 +2,9 @@
 {"source":"web01","target":"db01","tactic":"Credential Access","technique":"T1552","stepNum":2,"note":"App read .env; DB creds found in env var","source_label":"App","target_label":"Postgres"}
 {"source":"db01","target":"backup01","tactic":"Exfiltration","technique":"T1048","stepNum":3,"note":"Large DB export over TCP 443 to backup host outside change window","source_label":"Postgres","target_label":"Backup"}
 {"source":"web01","target":"filesrv","tactic":"Discovery","technique":"T1087","stepNum":4,"note":"App enumerated /share/users via SMB list","source_label":"Nginx","target_label":"File Server"}
+{"source":"filesrv","target":"ad01","tactic":"Lateral Movement","technique":"T1021","stepNum":5,"note":"SMB credential reuse attempt to access Active Directory","source_label":"File Server","target_label":"Active Directory"}
+{"source":"ad01","target":"app01","tactic":"Execution","technique":"T1059","stepNum":6,"note":"Adversary executed PowerShell command remotely on app01","source_label":"Active Directory","target_label":"Application Server"}
+{"source":"app01","target":"db02","tactic":"Persistence","technique":"T1053","stepNum":7,"note":"Scheduled task created to maintain DB access","source_label":"Application Server","target_label":"Database Replica"}
+{"source":"app01","target":"db02","tactic":"Collection","technique":"T1005","stepNum":8,"note":"Dumped sensitive HR data files from database replica","source_label":"Application Server","target_label":"Database Replica"}
+{"source":"db02","target":"ext01","tactic":"Exfiltration","technique":"T1041","stepNum":9,"note":"Compressed HR data sent over HTTP POST to attacker IP 198.51.100.77","source_label":"Database Replica","target_label":"External Host"}
+{"source":"ext01","target":"c2server","tactic":"Command and Control","technique":"T1071","stepNum":10,"note":"Periodic beaconing established to attacker C2 domain","source_label":"External Host","target_label":"C2 Server"}
